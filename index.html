@@ -1,43 +1,4 @@
-<script type="text/javascript">
-        var gk_isXlsx = false;
-        var gk_xlsxFileLookup = {};
-        var gk_fileData = {};
-        function filledCell(cell) {
-          return cell !== '' && cell != null;
-        }
-        function loadFileData(filename) {
-        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
-            try {
-                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
-                var firstSheetName = workbook.SheetNames[0];
-                var worksheet = workbook.Sheets[firstSheetName];
-
-                // Convert sheet to JSON to filter blank rows
-                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
-                // Filter out blank rows (rows where all cells are empty, null, or undefined)
-                var filteredData = jsonData.filter(row => row.some(filledCell));
-
-                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
-                var headerRowIndex = filteredData.findIndex((row, index) =>
-                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
-                );
-                // Fallback
-                if (headerRowIndex === -1 || headerRowIndex > 25) {
-                  headerRowIndex = 0;
-                }
-
-                // Convert filtered JSON back to CSV
-                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
-                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
-                return csv;
-            } catch (e) {
-                console.error(e);
-                return "";
-            }
-        }
-        return gk_fileData[filename] || "";
-        }
-        </script><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -57,16 +18,25 @@
 <body class="min-h-screen flex flex-col">
     <header class="bg-gray-900 py-6 shadow-lg">
         <div class="container mx-auto px-4">
-            <h1 className="text-3xl font-bold text-center">Heart of Fear WeakAura</h1>
-            <p className="text-center mt-2 text-gray-400">Latest WeakAura string for Heart of Fear raid</p>
+            <h1 class="text-3xl font-bold text-center">Heart of Fear WeakAura</h1>
+            <p class="text-center mt-2 text-gray-400">Latest WeakAura string for Heart of Fear raid</p>
         </div>
     </header>
 
-    <main className="container mx-auto px-4 py-8 flex-grow">
+    <main class="container mx-auto px-4 py-8 flex-grow">
+        <div class="mb-8">
+            <label class="block text-lg font-semibold mb-2">Manually Upload WeakAura File (if fetch fails)</label>
+            <input
+                type="file"
+                accept=".txt"
+                id="fileInput"
+                class="block w-full text-sm text-gray-200 file:mr-4 file:py-2 file:px-4 file:rounded file:bg-blue-600 file:text-white file:font-semibold file:hover:bg-blue-700"
+            />
+        </div>
         <div id="root"></div>
     </main>
 
-    <footer className="bg-gray-900 py-4 text-center text-gray-400">
+    <footer class="bg-gray-900 py-4 text-center text-gray-400">
         <p>&copy; 2025 Heart of Fear WeakAura Viewer. All rights reserved.</p>
     </footer>
 
@@ -75,7 +45,10 @@
             const copyToClipboard = () => {
                 navigator.clipboard.writeText(auraString)
                     .then(() => alert(`Copied ${fileName} to clipboard!`))
-                    .catch(err => console.error('Failed to copy: ', err));
+                    .catch(err => {
+                        console.error('Failed to copy:', err);
+                        alert('Failed to copy to clipboard. Please try again.');
+                    });
             };
 
             return (
@@ -100,37 +73,68 @@
 
         function App() {
             const [aura, setAura] = React.useState(null);
+            const [error, setError] = React.useState(null);
 
             // Hardcoded folder and filename
             const folderPath = 'weakauras/HoF';
-            const fileName = 'latest.txt'; // Update this to match the actual filename in the HoF folder
+            const fileName = 'latest.txt'; // Ensure this matches the file in weakauras/HoF
+
+            const fetchAura = async () => {
+                try {
+                    const response = await fetch(`${folderPath}/${fileName}`);
+                    if (!response.ok) throw new Error(`Failed to fetch ${fileName}: ${response.statusText}`);
+                    const text = await response.text();
+                    setAura({ fileName, auraString: text });
+                    setError(null);
+                } catch (err) {
+                    console.error('Error fetching aura:', err);
+                    setError(`Failed to load ${fileName}. Ensure the file exists in weakauras/HoF and the server is running.`);
+                    setAura(null);
+                }
+            };
 
             React.useEffect(() => {
-                const fetchAura = async () => {
-                    try {
-                        const response = await fetch(`${folderPath}/${fileName}`);
-                        if (!response.ok) throw new Error(`Failed to fetch ${fileName}`);
-                        const text = await response.text();
-                        setAura({ fileName, auraString: text });
-                    } catch (error) {
-                        console.error('Error fetching aura:', error);
-                        setAura({ fileName: 'Error', auraString: 'Failed to load WeakAura string. Please ensure the file exists in weakauras/HoF.' });
-                    }
-                };
-
                 fetchAura();
 
-                // Poll every minute to check for file updates
-                const interval = setInterval(fetchAura, 60000);
+                // Poll every 30 seconds for updates
+                const interval = setInterval(fetchAura, 30000);
                 return () => clearInterval(interval);
+            }, []);
+
+            // Handle manual file upload
+            const handleFileUpload = (event) => {
+                const file = event.target.files[0];
+                if (file && file.name.endsWith('.txt')) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        setAura({ fileName: file.name, auraString: e.target.result });
+                        setError(null);
+                    };
+                    reader.onerror = (err) => {
+                        console.error('Error reading file:', err);
+                        setError('Failed to read the uploaded file.');
+                    };
+                    reader.readAsText(file);
+                } else {
+                    setError('Please upload a valid .txt file.');
+                }
+            };
+
+            React.useEffect(() => {
+                const fileInput = document.getElementById('fileInput');
+                fileInput.addEventListener('change', handleFileUpload);
+                return () => fileInput.removeEventListener('change', handleFileUpload);
             }, []);
 
             return (
                 <div>
+                    {error && (
+                        <div className="text-red-500 text-center mb-4">{error}</div>
+                    )}
                     {aura ? (
                         <AuraCard fileName={aura.fileName} auraString={aura.auraString} />
                     ) : (
-                        <p className="text-center">Loading WeakAura...</p>
+                        !error && <p className="text-center">Loading WeakAura...</p>
                     )}
                 </div>
             );
