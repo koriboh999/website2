@@ -1,0 +1,142 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heart of Fear WeakAura</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.development.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.development.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/babel-standalone@7.22.9/Babel.min.js"></script>
+    <style>
+        body {
+            background-color: #1a202c;
+            color: #e2e8f0;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+    <header class="bg-gray-900 py-6 shadow-lg">
+        <div class="container mx-auto px-4">
+            <h1 className="text-3xl font-bold text-center">Heart of Fear WeakAura</h1>
+            <p className="text-center mt-2 text-gray-400">Latest WeakAura string for Heart of Fear raid</p>
+        </div>
+    </header>
+
+    <main className="container mx-auto px-4 py-8 flex-grow">
+        <div id="root"></div>
+    </main>
+
+    <footer className="bg-gray-900 py-4 text-center text-gray-400">
+        <p>&copy; 2025 Heart of Fear WeakAura Viewer. All rights reserved.</p>
+    </footer>
+
+    <script type="text/babel">
+        function AuraCard({ fileName, auraString }) {
+            const copyToClipboard = () => {
+                navigator.clipboard.writeText(auraString)
+                    .then(() => alert(`Copied ${fileName} to clipboard!`))
+                    .catch(err => console.error('Failed to copy: ', err));
+            };
+
+            return (
+                <div className="bg-gray-800 p-6 rounded-lg shadow-md hover:shadow-xl transition-shadow max-w-2xl mx-auto">
+                    <h2 className="text-xl font-semibold mb-4">{fileName}</h2>
+                    <div className="relative">
+                        <textarea
+                            className="w-full h-32 p-2 bg-gray-700 text-gray-200 rounded resize-none"
+                            value={auraString}
+                            readOnly
+                        ></textarea>
+                        <button
+                            onClick={copyToClipboard}
+                            className="absolute top-2 right-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1 px-3 rounded transition-colors"
+                        >
+                            Copy
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        function App() {
+            const [aura, setAura] = React.useState(null);
+
+            // Hardcoded folder and filename
+            const folderPath = 'weakauras/HoF';
+            const fileName = 'latest.txt'; // Update this to match the actual filename in the HoF folder
+
+            React.useEffect(() => {
+                const fetchAura = async () => {
+                    try {
+                        const response = await fetch(`${folderPath}/${fileName}`);
+                        if (!response.ok) throw new Error(`Failed to fetch ${fileName}`);
+                        const text = await response.text();
+                        setAura({ fileName, auraString: text });
+                    } catch (error) {
+                        console.error('Error fetching aura:', error);
+                        setAura({ fileName: 'Error', auraString: 'Failed to load WeakAura string. Please ensure the file exists in weakauras/HoF.' });
+                    }
+                };
+
+                fetchAura();
+
+                // Poll every minute to check for file updates
+                const interval = setInterval(fetchAura, 60000);
+                return () => clearInterval(interval);
+            }, []);
+
+            return (
+                <div>
+                    {aura ? (
+                        <AuraCard fileName={aura.fileName} auraString={aura.auraString} />
+                    ) : (
+                        <p className="text-center">Loading WeakAura...</p>
+                    )}
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
